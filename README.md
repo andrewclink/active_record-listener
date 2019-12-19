@@ -22,7 +22,7 @@ Or install it yourself as:
 
 ## Usage
 
-###For Rails:
+### For Rails:
 
 - Create a new file in config/initializers, like listener.rb
 - Add a block that specifies which channel to listen to and provide a block
