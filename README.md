@@ -33,6 +33,8 @@ ActiveRecord::Listener.listen('my_channel') do |channel, payload, conn|
 end
 ```
 
+*Please note that a new thread will be created to listen on the PG connection*. Your listen block will be called from this thread. 
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
