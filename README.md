@@ -1,8 +1,8 @@
 # ActiveRecord::Listener
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/active_record/listener`. To experiment with that code, run `bin/console` for an interactive prompt.
+Supports PostgreSQL's `LISTEN` pubsub command. While it works, it is currently unfinished. PRs especially welcome for unit tests.
 
-TODO: Delete this and the text above, and describe your gem
+Please note that in recent Postgres, NOTIFY is limited to 8000 characters.
 
 ## Installation
 
@@ -22,7 +22,16 @@ Or install it yourself as:
 
 ## Usage
 
-TODO: Write usage instructions here
+###For Rails:
+
+- Create a new file in config/initializers, like listener.rb
+- Add a block that specifies which channel to listen to and provide a block
+
+```ruby
+ActiveRecord::Listener.listen('my_channel') do |channel, payload, conn|
+  puts "Received on channel '#{channel}': #{payload.inspect}"
+end
+```
 
 ## Development
 
@@ -32,5 +41,5 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/active_record-listener.
+Bug reports and pull requests are welcome on GitHub at https://github.com/andrewclink/active_record-listener.
 
