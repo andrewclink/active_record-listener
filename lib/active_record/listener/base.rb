@@ -15,6 +15,7 @@ module ActiveRecord
       end
 
       def with_notify_connection
+        puts 'ActiveRecord::Listener::Base: will checkout connection'.colorize(:light_blue)
         ar_conn = ActiveRecord::Base.connection_pool.checkout
 
         if ar_conn.nil?
@@ -44,7 +45,7 @@ module ActiveRecord
       def threaded(&block)
         @thread = Thread.new do
           Thread.current.name = "ARL-none"
-          Thread.current.abort_on_exception = true
+          Thread.current.abort_on_exception = false
           puts "#{self.class}: started thread".colorize(:light_blue)
           yield
         end
