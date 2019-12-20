@@ -15,18 +15,23 @@ module ActiveRecord
       end
 
       def with_notify_connection
-        ar_conn = ActiveRecord::Base.connection_pool.checkout.tap do |conn|
-          # ActiveRecord::Listener is taking ownership over this database connection, and
-          # will perform the necessary cleanup tasks
-          ActiveRecord::Base.connection_pool.remove(conn)
+        ar_conn = ActiveRecord::Base.connection_pool.checkout
+
+        if ar_conn.nil?
+          puts 'ActiveRecord::Listener::Base: could not get connection!'.colorize(:red)
+          return
         end
+
+        # ActiveRecord::Listener is taking ownership over this database connection, and
+        # will perform the necessary cleanup tasks
+        ActiveRecord::Base.connection_pool.remove(ar_conn)
 
         pg_conn = ar_conn.raw_connection
         verify! pg_conn
 
         yield pg_conn
       ensure
-        ar_conn.disconnect!
+        ar_conn.disconnect! unless ar_conn.nil?
       end
 
       public
@@ -74,7 +79,7 @@ module ActiveRecord
             end #catch
             
           ensure # in with_notify_connection
-            conn.exec "UNLISTEN #{channel}"
+            conn.exec "UNLISTEN #{channel}" unless conn.nil?
           end
         end
       end
