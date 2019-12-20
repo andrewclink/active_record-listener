@@ -30,6 +30,10 @@ module ActiveRecord
         verify! pg_conn
 
         yield pg_conn
+      rescue PG::ConnectionBad
+        # Let's not be the bearer of bad news. Specifically, let's not cause 
+        # rake db:create to fail because the database doesn't yet exist
+        puts "#{self.class}: Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
       ensure
         ar_conn.disconnect! unless ar_conn.nil?
       end
