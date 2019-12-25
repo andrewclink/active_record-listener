@@ -31,15 +31,15 @@ module ActiveRecord
         verify! pg_conn
 
         yield pg_conn
-      rescue PG::ConnectionBad
+      rescue PG::ConnectionBad, ActiveRecord::NoDatabaseError
         # Let's not be the bearer of bad news. Specifically, let's not cause 
         # rake db:create to fail because the database doesn't yet exist
         puts "#{self.class}: Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
+        return nil
+        
       ensure
         ar_conn.disconnect! unless ar_conn.nil?
       end
-
-      public
 
       # This runs on the listener thread
       def threaded(&block)
@@ -49,6 +49,12 @@ module ActiveRecord
           puts "#{self.class}: started thread".colorize(:light_blue)
           yield
         end
+      end
+
+      public
+
+      def unlisten
+        @thread.exit
       end
 
       def listen(channel, &block)
