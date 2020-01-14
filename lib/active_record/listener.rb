@@ -17,13 +17,20 @@ module ActiveRecord
     end
   
     def self.listen(channel, &block)
-      puts "ActiveRecord::Listener.listen(#{channel.inspect})".colorize(:light_blue)
-      
       @state_monitor.when_connected do
         @listeners[channel] = Base.new.tap do |listener|
           listener.listen(channel, &block)
         end
       end
     end
+
+    def self.notify(channel, payload)
+      ActiveRecord::Base.connection_pool.with_connection do |ar_conn|
+        ar_conn.raw_connection.tap do |pg_conn|
+          pg_conn.exec("NOTIFY #{pg_conn.escape_identifier(channel)}, '#{pg_conn.escape_string(payload)}'")
+        end
+      end
+    end
+    
   end
 end

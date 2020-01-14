@@ -15,11 +15,10 @@ module ActiveRecord
       end
 
       def with_notify_connection
-        puts 'ActiveRecord::Listener::Base: will checkout connection'.colorize(:light_blue)
         ar_conn = ActiveRecord::Base.connection_pool.checkout
 
         if ar_conn.nil?
-          puts 'ActiveRecord::Listener::Base: could not get connection!'.colorize(:red)
+          Rails.logger.error 'ActiveRecord::Listener::Base: could not get connection!'.colorize(:red)
           return
         end
 
@@ -29,12 +28,12 @@ module ActiveRecord
 
         pg_conn = ar_conn.raw_connection
         verify! pg_conn
-
+        
         yield pg_conn
       rescue PG::ConnectionBad, ActiveRecord::NoDatabaseError
         # Let's not be the bearer of bad news. Specifically, let's not cause 
         # rake db:create to fail because the database doesn't yet exist
-        puts "#{self.class}: Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
+        Rails.logger.error "#{self.class}: Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
         return nil
         
       ensure
@@ -46,7 +45,6 @@ module ActiveRecord
         @thread = Thread.new do
           Thread.current.name = "ARL-none"
           Thread.current.abort_on_exception = false
-          puts "#{self.class}: started thread".colorize(:light_blue)
           yield
         end
       end
@@ -61,16 +59,18 @@ module ActiveRecord
         threaded do
           Thread.current.name = "ARL-#{channel}"
           with_notify_connection do |conn|
-            puts "#{self.class}: Will LISTEN on #{conn.inspect}".colorize(:light_blue)
+            Rails.logger.debug "#{self.class}: LISTEN '#{channel}'on #{conn.inspect}".colorize(:light_blue)
+            
+            conn.exec("SET application_name = 'ARL-#{channel}'")
             conn.exec "LISTEN #{channel}"
 
             catch :shutdown do
               @listening = true
 
-              puts "#{self.class}: (waiting for NOTIFY...)".colorize(:light_blue)
+              Rails.logger.debug "#{self.class}: (waiting for NOTIFY...)".colorize(:light_blue)
               loop do
                 conn.wait_for_notify(1) do |channel, _pid, payload|
-                  puts 'NOTIFY'.colorize(color: :white, background: :light_blue) + "channel: #{channel}; payload: #{payload.inspect}"
+                  Rails.logger.debug 'recv NOTIFY'.colorize(color: :white, background: :light_blue) + " channel: #{channel}; payload: #{payload}"
 
                   begin
                     case block.arity
@@ -80,13 +80,13 @@ module ActiveRecord
                     else raise ArgumentError.new("Invalid arguments to listen handler. (Expected 1..3, got #{block.arity})")
                     end
                   rescue Exception => e
-                    puts "Exception in 'LISTEN #{channel}' handler: #{e.message}".colorize(:red)
+                    Rails.logger.error "Exception in 'LISTEN #{channel}' handler: #{e.message}".colorize(:red)
                     e.backtrace.each do |line|
-                      puts '    '+ line
+                      Rails.logger.info '    '+ line
                     end
                   end
-                end#wait_for_notify
-              end#loop
+                end #wait_for_notify
+              end #loop
             end #catch
             
           ensure # in with_notify_connection
