@@ -90,7 +90,12 @@ module ActiveRecord
             end #catch
             
           ensure # in with_notify_connection
-            conn.exec "UNLISTEN #{channel}" unless conn.nil?
+            begin
+              conn.exec "UNLISTEN #{channel}" unless conn.nil?
+            rescue PG::UnableToSend
+              # We don't need to UNLISTEN on a connection that has apparently been closed.
+              Rails.logger.error "ARL: UnableToSend UNLISTEN in pid #{Process.pid} (child: #{Rails::application.is_forked?})"
+            end
           end
         end
       end
