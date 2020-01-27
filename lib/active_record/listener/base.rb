@@ -56,6 +56,10 @@ module ActiveRecord
       end
 
       def listen(channel, &block)
+        puts "ARL LISTEN: '#{channel}' in_rake? #{in_rake_task?}"
+        
+        return Rails.logger.info "#{self.class}: LISTEN suppressed in rake task" if in_rake_task?
+        
         threaded do
           Thread.current.name = "ARL-#{channel}"
           with_notify_connection do |conn|
@@ -97,6 +101,16 @@ module ActiveRecord
               Rails.logger.error "ARL: UnableToSend UNLISTEN in pid #{Process.pid} (child: #{Rails::application.is_forked?})"
             end
           end
+        end
+      end
+
+      private
+      
+      def in_rake_task?
+        if ARGV[0] =~ /\:|db/
+          true
+        else
+          false
         end
       end
 
