@@ -6,6 +6,7 @@ module ActiveRecord
 
       def initialize
         @listening = false
+        @channel = nil
         @queue = []
       end
 
@@ -30,13 +31,15 @@ module ActiveRecord
         verify! pg_conn
         
         yield pg_conn
+
       rescue PG::ConnectionBad, ActiveRecord::NoDatabaseError
         # Let's not be the bearer of bad news. Specifically, let's not cause 
         # rake db:create to fail because the database doesn't yet exist
-        Rails.logger.error "#{self.class}: Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
+        Rails.logger.error "#{self.class}[#{Process.pid}] (#@channel): Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
         return nil
         
       ensure
+        puts "ActiveRecord::Listener::Base[#{Process.pid}]: ar_conn.disconnect! #{ar_conn}".colorize(:red)
         ar_conn.disconnect! unless ar_conn.nil?
       end
 
@@ -52,13 +55,20 @@ module ActiveRecord
       public
 
       def unlisten
-        @thread.exit
+        # This will cause the thread to hit its ensure block,
+        # which will unlisten on the connection if possible.
+        @thread.exit if @thread.alive?
+        @thread = nil
       end
 
       def listen(channel, &block)
-        puts "ARL LISTEN: '#{channel}' in_rake? #{in_rake_task?}"
+        Rails.logger.debug "ActiveRecord::Listener::Base: '#{channel}' in_rake? #{ActiveRecord::Listener.in_rake_task?}"
         
-        return Rails.logger.info "#{self.class}: LISTEN suppressed in rake task" if in_rake_task?
+        return Rails.logger.debug "#{self.class}: LISTEN suppressed in rake task" if ActiveRecord::Listener.in_rake_task?
+        return if channel.nil?
+        return unless block_given?
+        
+        @channel = channel
         
         threaded do
           Thread.current.name = "ARL-#{channel}"
@@ -66,15 +76,27 @@ module ActiveRecord
             Rails.logger.debug "#{self.class}: LISTEN '#{channel}'on #{conn.inspect}".colorize(:light_blue)
             
             conn.exec("SET application_name = 'ARL-#{channel}'")
-            conn.exec "LISTEN #{channel}"
+
+            stmt = "LISTEN #{conn.escape_identifier(channel)}"
+            Rails.logger.debug "#{'ActiveRecord::Listener::Base:'.colorize(:light_blue)} #{stmt}"
+            conn.exec stmt
+            
+            # Also listen for the disconnect hook. If we're forked into a rake process (rspec)
+            # we need to immediately relinquish the database so it can be dropped, migrated, etc.
+            #
+            stmt = "LISTEN #{conn.escape_identifier('arl_disconnect_hook')}"
+            conn.exec stmt
+            
 
             catch :shutdown do
               @listening = true
 
-              Rails.logger.debug "#{self.class}: (waiting for NOTIFY...)".colorize(:light_blue)
+              #Rails.logger.debug "#{self.class}: (waiting for NOTIFY...)".colorize(:light_blue)
               loop do
-                conn.wait_for_notify(1) do |channel, _pid, payload|
-                  Rails.logger.debug 'recv NOTIFY'.colorize(color: :white, background: :light_blue) + " channel: #{channel}; payload: #{payload}"
+                conn.wait_for_notify(0.1) do |channel, _pid, payload|
+                  throw(:shutdown) if channel == 'arl_disconnect_hook'
+
+                  #puts 'recv NOTIFY'.colorize(color: :white, background: :light_blue) + " channel: #{channel}; payload: #{payload}"
 
                   begin
                     case block.arity
@@ -94,23 +116,15 @@ module ActiveRecord
             end #catch
             
           ensure # in with_notify_connection
+            Rails.logger.debug "ARL (#{channel}): Thread exiting in pid #{Process.pid}"
             begin
               conn.exec "UNLISTEN #{channel}" unless conn.nil?
+              conn.close
             rescue PG::UnableToSend
               # We don't need to UNLISTEN on a connection that has apparently been closed.
               Rails.logger.error "ARL: UnableToSend UNLISTEN in pid #{Process.pid} (child: #{Rails::application.is_forked?})"
             end
           end
-        end
-      end
-
-      private
-      
-      def in_rake_task?
-        if ARGV[0] =~ /\:|db/
-          true
-        else
-          false
         end
       end
 

@@ -38,17 +38,13 @@ RSpec.configure do |config|
   #   end
   # end
   
-  config.befure(:suite) do
-    ActiveRecord::Listener.listeners.each do |ch, listener|
-      puts "Notice: ARL listening on #{ch}".colorize(:yellow)
-    end
+  config.before(:suite) do
+
   end
   
   config.after(:suite) do
-    ActiveRecord::Listener.listeners.each do |ch, listener|
-      puts "Unlisten: #{ch}"
-      listener.unlisten
-    end
+    # Unlisten All
+    ActiveRecord::Listener.notify('arl_disconnect_hook', 'disconnect')
     
     Rails.application.load_tasks
     Rake::Task['db:drop'].invoke
