@@ -30,12 +30,16 @@ module ActiveRecord
         pg_conn = ar_conn.raw_connection
         verify! pg_conn
         
+        Rails.logger.debug "ARL: Will yield pg_conn: #{pg_conn.inspect}"
         yield pg_conn
 
-      rescue PG::ConnectionBad, ActiveRecord::NoDatabaseError
+      rescue PG::ConnectionBad, ActiveRecord::NoDatabaseError => e
         # Let's not be the bearer of bad news. Specifically, let's not cause 
         # rake db:create to fail because the database doesn't yet exist
         Rails.logger.error "#{self.class}[#{Process.pid}] (#@channel): Received PG::ConnectionBad. Ignoring (and not listening)".colorize(:yellow)
+        
+        e.backtrace.each {|line| Rails.logger.error "#{self.class}[#{Process.pid}] (#@channel): #{line}" }
+        
         return nil
         
       ensure
@@ -91,12 +95,12 @@ module ActiveRecord
             catch :shutdown do
               @listening = true
 
-              #Rails.logger.debug "#{self.class}: (waiting for NOTIFY...)".colorize(:light_blue)
+              Rails.logger.debug "#{self.class}: (waiting for NOTIFY...)".colorize(:light_blue)
               loop do
                 conn.wait_for_notify(0.1) do |channel, _pid, payload|
                   throw(:shutdown) if channel == 'arl_disconnect_hook'
 
-                  #puts 'recv NOTIFY'.colorize(color: :white, background: :light_blue) + " channel: #{channel}; payload: #{payload}"
+                  Rails.logger.debug 'recv NOTIFY'.colorize(color: :white, background: :light_blue) + " channel: #{channel}; payload: #{payload}"
 
                   begin
                     case block.arity
