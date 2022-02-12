@@ -40,8 +40,8 @@ module ActiveRecord
         
         e.backtrace.each {|line| Rails.logger.error "#{self.class}[#{Process.pid}] (#@channel): #{line}" }
         
-        return nil
-        
+        sleep 0.5
+        retry
       ensure
         puts "ActiveRecord::Listener::Base[#{Process.pid}]: ar_conn.disconnect! #{ar_conn}".colorize(:red)
         ar_conn.disconnect! unless ar_conn.nil?
